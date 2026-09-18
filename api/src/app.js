@@ -4,6 +4,7 @@ const helmet = require("helmet");
 const pinoHttp = require("pino-http");
 const { randomUUID } = require("node:crypto");
 
+const passport = require("./config/passport");
 const config = require("./config");
 const logger = require("./lib/logger");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
@@ -52,6 +53,8 @@ function createApp() {
       },
     }),
   );
+
+  app.use(passport.initialize());
 
   app.use("/api/v1", require("./routes"));
 

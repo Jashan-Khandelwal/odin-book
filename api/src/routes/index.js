@@ -3,6 +3,7 @@ const prisma = require("../db/prisma");
 
 const router = Router();
 
+router.use("/auth", require("./authRouter"));
 // GET /api/v1/health
 // This is a READINESS check, not just a liveness check: the process can be
 // running fine while Postgres is unreachable, and a load balancer needs to
