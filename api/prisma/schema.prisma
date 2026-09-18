@@ -1,0 +1,124 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique // always stored lowercase
+  displayName  String
+  email        String   @unique // always stored lowercase
+  passwordHash String? // null for guest and OAuth accounts
+  bio          String?
+  avatarUrl    String?
+  isPrivate    Boolean  @default(false)
+  isGuest      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  posts    Post[]
+  comments Comment[]
+  likes    Like[]
+
+  // Two views of the same Follow table. The relation NAMES are the only
+  // thing telling Prisma which foreign key each field should read.
+  following Follow[] @relation("FollowFollower") // rows where I am the follower
+  followers Follow[] @relation("FollowFollowing") // rows where I am followed
+
+  notificationsReceived Notification[] @relation("NotificationRecipient")
+  notificationsCaused   Notification[] @relation("NotificationActor")
+}
+
+model Post {
+  id        Int      @id @default(autoincrement())
+  content   String   @db.Text
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  author   User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId Int
+
+  comments      Comment[]
+  likes         Like[]
+  notifications Notification[]
+}
+
+model Comment {
+  id        Int      @id @default(autoincrement())
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId Int
+
+  author   User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId Int
+}
+
+model Like {
+  createdAt DateTime @default(now())
+
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId Int
+
+  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId Int
+
+  // The pair IS the identity — there is no such thing as two of the same like.
+  @@id([userId, postId])
+}
+
+model Follow {
+  status    FollowStatus @default(PENDING)
+  createdAt DateTime     @default(now())
+
+  follower   User @relation("FollowFollower", fields: [followerId], references: [id], onDelete: Cascade)
+  followerId Int
+
+  following   User @relation("FollowFollowing", fields: [followingId], references: [id], onDelete: Cascade)
+  followingId Int
+
+  @@id([followerId, followingId])
+}
+
+enum FollowStatus {
+  PENDING
+  ACCEPTED
+}
+
+model Notification {
+  id        Int              @id @default(autoincrement())
+  type      NotificationType
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  recipient   User @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  recipientId Int
+
+  actor   User @relation("NotificationActor", fields: [actorId], references: [id], onDelete: Cascade)
+  actorId Int
+
+  // Null for follow notifications; set for like and comment notifications.
+  post   Post? @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId Int?
+}
+
+enum NotificationType {
+  LIKE
+  COMMENT
+  FOLLOW_REQUEST
+  FOLLOW_ACCEPTED
+  NEW_FOLLOWER
+}
