@@ -8,6 +8,8 @@ router.use("/auth", require("./authRouter"));
 // This is a READINESS check, not just a liveness check: the process can be
 // running fine while Postgres is unreachable, and a load balancer needs to
 // take this instance out of rotation when that happens.
+router.use("/users", require("./userRouter"));
+
 router.get("/health", async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
