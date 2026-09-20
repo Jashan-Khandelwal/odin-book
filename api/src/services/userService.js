@@ -1,33 +1,11 @@
 const prisma = require("../db/prisma");
 const { userPublicSelect, userPrivateSelect } = require("../db/selects");
 const { NotFoundError } = require("../lib/errors");
-const {
-  cursorWhere,
-  cursorOrderBy,
-  buildPage,
-} = require("../lib/pagination");
+const { cursorWhere, cursorOrderBy, buildPage } = require("../lib/pagination");
+const { attachViewerStatus } = require("./relationship");
 
 // For a page of users, work out the viewer's relationship to each of them
 // in ONE extra query rather than one query per user.
-async function attachViewerStatus(users, viewerId) {
-  if (users.length === 0) return users;
-
-  const follows = await prisma.follow.findMany({
-    where: {
-      followerId: viewerId,
-      followingId: { in: users.map((u) => u.id) },
-    },
-    select: { followingId: true, status: true },
-  });
-
-  const statusByUserId = new Map(follows.map((f) => [f.followingId, f.status]));
-
-  return users.map((u) => ({
-    ...u,
-    // null | "PENDING" | "ACCEPTED" — the frontend picks the button from this.
-    viewer: { followStatus: statusByUserId.get(u.id) ?? null },
-  }));
-}
 
 async function listUsers({ viewerId, q, cursor, limit }) {
   const filters = [
@@ -112,8 +90,7 @@ async function getProfile({ username, viewer }) {
       followStatus: outgoing?.status ?? null,
       followsYou: incoming?.status === "ACCEPTED",
       // Phase 5 uses this to decide whether to serve their posts.
-      canSeePosts:
-        isSelf || !user.isPrivate || outgoing?.status === "ACCEPTED",
+      canSeePosts: isSelf || !user.isPrivate || outgoing?.status === "ACCEPTED",
     },
   };
 }

@@ -10,6 +10,8 @@ router.use("/auth", require("./authRouter"));
 // take this instance out of rotation when that happens.
 router.use("/users", require("./userRouter"));
 
+router.use("/follow-requests", require("./followRequestRouter"));
+
 router.get("/health", async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;

@@ -38,7 +38,7 @@ function cursorWhere(cursor, tieField = "id") {
   if (!cursor) return {};
   const at = new Date(cursor.createdAt);
   return {
-    OR: [{ createdAt: { lt: at } }, { createdAt: at, [tieField]: "desc" }],
+    OR: [{ createdAt: { lt: at } }, { createdAt: at, [tieField]: { lt: cursor.id } }],
   };
 }
 

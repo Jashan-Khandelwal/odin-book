@@ -4,7 +4,11 @@ const { body, param } = require("express-validator");
 const userController = require("../controllers/userController");
 const { requireAuth } = require("../middleware/auth");
 const { handleValidation } = require("../middleware/validate");
+const followController = require("../controllers/followController");
 
+const usernameParam = param("username")
+  .matches(/^[a-zA-Z0-9_]+$/)
+  .withMessage("Invalid username.");
 const router = Router();
 
 // Nothing about users is visible to anonymous callers.
@@ -36,13 +40,10 @@ router.patch(
   userController.updateMe,
 );
 
-router.get(
-  "/:username",
-  param("username")
-    .matches(/^[a-zA-Z0-9_]+$/)
-    .withMessage("Invalid username."),
-  handleValidation,
-  userController.getProfile,
-);
+router.get("/:username", usernameParam, handleValidation, userController.getProfile);
+router.put("/:username/follow", usernameParam, handleValidation, followController.follow);
+router.delete("/:username/follow", usernameParam, handleValidation, followController.unfollow);
+router.get("/:username/followers", usernameParam, handleValidation, followController.listFollowers);
+router.get("/:username/following", usernameParam, handleValidation, followController.listFollowing);
 
 module.exports = router;
