@@ -12,6 +12,8 @@ router.use("/users", require("./userRouter"));
 
 router.use("/follow-requests", require("./followRequestRouter"));
 
+router.use("/posts", require("./postRouter"));
+
 router.get("/health", async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;

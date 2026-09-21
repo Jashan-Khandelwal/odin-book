@@ -26,8 +26,22 @@ function pick(row, shape) {
   return out;
 }
 
+// Everything a post needs in a response. The _count block asks Postgres to
+// count related rows in the same query instead of a round trip per post.
+const postSelect = {
+  id: true,
+  content: true,
+  imageUrl: true,
+  createdAt: true,
+  updatedAt: true,
+  author: { select: userPublicSelect },
+  _count: { select: { likes: true, comments: true } },
+};
+
+
 module.exports = {
   userPublicSelect,
   userPrivateSelect,
+  postSelect,
   pick,
 };
