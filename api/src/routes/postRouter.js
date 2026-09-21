@@ -4,9 +4,19 @@ const { body, param } = require("express-validator");
 const postController = require("../controllers/postController");
 const { requireAuth } = require("../middleware/auth");
 const { handleValidation } = require("../middleware/validate");
+const likeController = require("../controllers/likeController");
+const commentController = require("../controllers/commentController");
 
 const router = Router();
+
 router.use(requireAuth);
+
+const commentContentRule = body("content")
+  .trim()
+  .notEmpty()
+  .withMessage("A comment cannot be empty.")
+  .isLength({ max: 300 })
+  .withMessage("A comment must be 300 characters or fewer.");
 
 const postIdParam = param("postId")
   .isInt({ min: 1 })
@@ -31,5 +41,12 @@ router.patch(
 );
 
 router.delete("/:postId", postIdParam, handleValidation, postController.remove);
+
+router.put("/:postId/like", postIdParam, handleValidation, likeController.like);
+router.delete("/:postId/like", postIdParam, handleValidation, likeController.unlike);
+router.get("/:postId/likes", postIdParam, handleValidation, likeController.listLikers);
+
+router.post("/:postId/comments", [postIdParam, commentContentRule], handleValidation, commentController.create);
+router.get("/:postId/comments", postIdParam, handleValidation, commentController.list);
 
 module.exports = router;

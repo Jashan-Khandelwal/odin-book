@@ -34,17 +34,24 @@ function decodeCursor(raw) {
 // Postgres can express this as ("createdAt", id) < ($1, $2); Prisma can't,
 // so we spell out the same comparison:
 //   older than the cursor, OR the same instant but a lower tiebreaker.
-function cursorWhere(cursor, tieField = "id") {
+
+// "Everything strictly after the cursor." Default is newest-first; pass
+// "asc" for lists that read oldest-first, like comments.
+function cursorWhere(cursor, tieField = "id", direction = "desc") {
   if (!cursor) return {};
   const at = new Date(cursor.createdAt);
+  const op = direction === "asc" ? "gt" : "lt";
   return {
-    OR: [{ createdAt: { lt: at } }, { createdAt: at, [tieField]: { lt: cursor.id } }],
+    OR: [
+      { createdAt: { [op]: at } },
+      { createdAt: at, [tieField]: { [op]: cursor.id } },
+    ],
   };
 }
 
 // Must always match cursorWhere — same fields, same direction.
-function cursorOrderBy(tieField = "id") {
-  return [{ createdAt: "desc" }, { [tieField]: "desc" }];
+function cursorOrderBy(tieField = "id", direction = "desc") {
+  return [{ createdAt: direction }, { [tieField]: direction }];
 }
 
 // Queries ask for limit + 1 rows. If the extra one came back there is

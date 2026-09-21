@@ -38,10 +38,22 @@ const postSelect = {
   _count: { select: { likes: true, comments: true } },
 };
 
+// `post.authorId` is fetched so we can work out who may delete the comment,
+// then stripped before the response.
+const commentSelect = {
+  id: true,
+  content: true,
+  createdAt: true,
+  updatedAt: true,
+  postId: true,
+  author: { select: userPublicSelect },
+  post: { select: { authorId: true } },
+};
 
 module.exports = {
   userPublicSelect,
   userPrivateSelect,
   postSelect,
+  commentSelect,
   pick,
 };

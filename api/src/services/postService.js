@@ -3,24 +3,24 @@ const { postSelect } = require("../db/selects");
 const { NotFoundError, ForbiddenError } = require("../lib/errors");
 const { cursorWhere, cursorOrderBy, buildPage } = require("../lib/pagination");
 const { attachPostViewerState } = require("./relationship");
-
-// THE visibility rule, written once. A post can be seen when its author is
-// public, OR is the viewer, OR has accepted the viewer as a follower.
-// Because it is a Prisma filter rather than an if-statement, it composes
-// into any query — one post, one user's posts, or the whole feed.
-function visibleToViewer(viewerId) {
-  return {
-    OR: [
-      { author: { isPrivate: false } },
-      { authorId: viewerId },
-      {
-        author: {
-          followers: { some: { followerId: viewerId, status: "ACCEPTED" } },
-        },
-      },
-    ],
-  };
-}
+const { visibleToViewer } = require("./visibility");
+// // THE visibility rule, written once. A post can be seen when its author is
+// // public, OR is the viewer, OR has accepted the viewer as a follower.
+// // Because it is a Prisma filter rather than an if-statement, it composes
+// // into any query — one post, one user's posts, or the whole feed.
+// function visibleToViewer(viewerId) {
+//   return {
+//     OR: [
+//       { author: { isPrivate: false } },
+//       { authorId: viewerId },
+//       {
+//         author: {
+//           followers: { some: { followerId: viewerId, status: "ACCEPTED" } },
+//         },
+//       },
+//     ],
+//   };
+// }
 
 // Every read returns the same shape, so they all finish the same way.
 async function decorate(post, viewerId) {
