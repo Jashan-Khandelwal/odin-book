@@ -20,13 +20,16 @@ const contentRule = body("content")
   .withMessage("A post must be 500 characters or fewer.");
 
 router.post("/", contentRule, handleValidation, postController.create);
+
 router.get("/:postId", postIdParam, handleValidation, postController.getOne);
+
 router.patch(
   "/:postId",
   [postIdParam, contentRule],
   handleValidation,
   postController.update,
 );
+
 router.delete("/:postId", postIdParam, handleValidation, postController.remove);
 
 module.exports = router;

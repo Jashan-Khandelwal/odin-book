@@ -1,5 +1,7 @@
 const { Router } = require("express");
 const prisma = require("../db/prisma");
+const { requireAuth } = require("../middleware/auth");
+const postController = require("../controllers/postController");
 
 const router = Router();
 
@@ -13,6 +15,8 @@ router.use("/users", require("./userRouter"));
 router.use("/follow-requests", require("./followRequestRouter"));
 
 router.use("/posts", require("./postRouter"));
+
+router.get("/feed", requireAuth, postController.feed);
 
 router.get("/health", async (req, res) => {
   try {

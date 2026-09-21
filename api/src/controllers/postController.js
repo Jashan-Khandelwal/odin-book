@@ -1,5 +1,6 @@
 const postService = require("../services/postService");
 const { parseLimit, decodeCursor } = require("../lib/pagination");
+const feedService = require("../services/feedService");
 
 async function create(req, res) {
   const post = await postService.createPost({
@@ -44,4 +45,13 @@ async function listByUser(req, res) {
   res.json(result);
 }
 
-module.exports = { create, getOne, update, remove, listByUser };
+async function feed(req, res) {
+  const result = await feedService.getFeed({
+    viewerId: req.user.id,
+    cursor: decodeCursor(req.query.cursor),
+    limit: parseLimit(req.query.limit),
+  });
+  res.json(result);
+}
+
+module.exports = { create, getOne, update, remove, listByUser, feed, };
