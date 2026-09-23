@@ -4,6 +4,8 @@ const { NotFoundError, ForbiddenError } = require("../lib/errors");
 const { cursorWhere, cursorOrderBy, buildPage } = require("../lib/pagination");
 const { attachPostViewerState } = require("./relationship");
 const { visibleToViewer } = require("./visibility");
+const storage = require("./storageService");
+
 // // THE visibility rule, written once. A post can be seen when its author is
 // // public, OR is the viewer, OR has accepted the viewer as a follower.
 // // Because it is a Prisma filter rather than an if-statement, it composes
@@ -32,19 +34,29 @@ async function decorate(post, viewerId) {
 async function loadOwned(postId, viewerId, verb) {
   const existing = await prisma.post.findUnique({
     where: { id: postId },
-    select: { authorId: true },
+    select: { authorId: true, imagePublicId: true },
   });
   if (!existing) throw new NotFoundError("Post not found.");
   if (existing.authorId !== viewerId) {
     throw new ForbiddenError(`You can only ${verb} your own posts.`);
   }
+  return existing;
 }
 
-async function createPost({ viewerId, content }) {
+async function createPost({ viewerId, content, imageBuffer }) {
+  const image = imageBuffer ? await storage.savePostImage(imageBuffer) : null;
+
   const post = await prisma.post.create({
-    data: { content: content.trim(), authorId: viewerId },
+    data: {
+      // A post may be image-only, so content can be absent.
+      content: (content ?? "").trim(),
+      authorId: viewerId,
+      imageUrl: image?.url ?? null,
+      imagePublicId: image?.publicId ?? null,
+    },
     select: postSelect,
   });
+
   return decorate(post, viewerId);
 }
 
@@ -70,8 +82,10 @@ async function updatePost({ viewerId, postId, content }) {
 }
 
 async function deletePost({ viewerId, postId }) {
-  await loadOwned(postId, viewerId, "delete");
+  const existing = await loadOwned(postId, viewerId, "delete");
   await prisma.post.delete({ where: { id: postId } });
+  // After the row is gone: an orphaned file beats a post that won't delete.
+  await storage.removeImage(existing.imagePublicId);
 }
 
 async function listUserPosts({ viewerId, username, cursor, limit }) {

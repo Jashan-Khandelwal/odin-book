@@ -6,6 +6,8 @@ async function create(req, res) {
   const post = await postService.createPost({
     viewerId: req.user.id,
     content: req.body.content,
+    // Present only when the request was multipart with an image field.
+    imageBuffer: req.file?.buffer,
   });
   res.status(201).json({ post });
 }
@@ -54,4 +56,4 @@ async function feed(req, res) {
   res.json(result);
 }
 
-module.exports = { create, getOne, update, remove, listByUser, feed, };
+module.exports = { create, getOne, update, remove, listByUser, feed };

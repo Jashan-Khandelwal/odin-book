@@ -32,4 +32,17 @@ async function updateMe(req, res) {
   res.json({ user });
 }
 
-module.exports = { list, getProfile, updateMe };
+async function updateAvatar(req, res) {
+  const user = await userService.updateAvatar({
+    viewerId: req.user.id,
+    buffer: req.file.buffer,
+  });
+  res.json({ user });
+}
+
+async function removeAvatar(req, res) {
+  const user = await userService.removeAvatar({ viewerId: req.user.id });
+  res.json({ user });
+}
+
+module.exports = { list, getProfile, updateMe, updateAvatar, removeAvatar };

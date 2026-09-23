@@ -6,11 +6,12 @@ const { requireAuth } = require("../middleware/auth");
 const { handleValidation } = require("../middleware/validate");
 const followController = require("../controllers/followController");
 const postController = require("../controllers/postController");
+const { singleImage } = require("../lib/upload");
 
 const usernameParam = param("username")
   .matches(/^[a-zA-Z0-9_]+$/)
   .withMessage("Invalid username.");
-  
+
 const router = Router();
 
 // Nothing about users is visible to anonymous callers.
@@ -42,13 +43,50 @@ router.patch(
   userController.updateMe,
 );
 
-router.get("/:username", usernameParam, handleValidation, userController.getProfile);
+router.get(
+  "/:username",
+  usernameParam,
+  handleValidation,
+  userController.getProfile,
+);
 
-router.put("/:username/follow", usernameParam, handleValidation, followController.follow);
-router.delete("/:username/follow", usernameParam, handleValidation, followController.unfollow);
-router.get("/:username/followers", usernameParam, handleValidation, followController.listFollowers);
-router.get("/:username/following", usernameParam, handleValidation, followController.listFollowing);
+router.put(
+  "/:username/follow",
+  usernameParam,
+  handleValidation,
+  followController.follow,
+);
+router.delete(
+  "/:username/follow",
+  usernameParam,
+  handleValidation,
+  followController.unfollow,
+);
+router.get(
+  "/:username/followers",
+  usernameParam,
+  handleValidation,
+  followController.listFollowers,
+);
+router.get(
+  "/:username/following",
+  usernameParam,
+  handleValidation,
+  followController.listFollowing,
+);
 
-router.get("/:username/posts", usernameParam, handleValidation, postController.listByUser);
+router.get(
+  "/:username/posts",
+  usernameParam,
+  handleValidation,
+  postController.listByUser,
+);
+
+router.put(
+  "/me/avatar",
+  singleImage("avatar", { required: true }),
+  userController.updateAvatar,
+);
+router.delete("/me/avatar", userController.removeAvatar);
 
 module.exports = router;

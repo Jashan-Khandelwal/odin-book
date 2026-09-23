@@ -6,6 +6,7 @@ const { requireAuth } = require("../middleware/auth");
 const { handleValidation } = require("../middleware/validate");
 const likeController = require("../controllers/likeController");
 const commentController = require("../controllers/commentController");
+const { singleImage } = require("../lib/upload");
 
 const router = Router();
 
@@ -24,12 +25,18 @@ const postIdParam = param("postId")
 
 const contentRule = body("content")
   .trim()
-  .notEmpty()
-  .withMessage("A post cannot be empty.")
   .isLength({ max: 500 })
-  .withMessage("A post must be 500 characters or fewer.");
+  .withMessage("A post must be 500 characters or fewer.")
+  // A post needs SOMETHING. req.file exists only if multer just parsed one.
+  .custom((value, { req }) => {
+    if (!value && !req.file) {
+      throw new Error("A post needs text, an image, or both.");
+    }
+    return true;
+  });
 
-router.post("/", contentRule, handleValidation, postController.create);
+// router.post("/", contentRule, handleValidation, postController.create);
+router.post("/", singleImage("image"), contentRule, handleValidation, postController.create);
 
 router.get("/:postId", postIdParam, handleValidation, postController.getOne);
 

@@ -26,6 +26,8 @@ const config = {
   jwtSecret: required("JWT_SECRET"),
   jwtExpiresIn: optional("JWT_EXPIRES_IN", "7d"),
 
+  cloudinaryUrl: optional("CLOUDINARY_URL", null),
+
   // "a.com, b.com" → ["a.com", "b.com"]
   corsOrigins: optional("CORS_ORIGINS", "")
     .split(",")
@@ -35,6 +37,11 @@ const config = {
 
 config.isProduction = config.env === "production";
 config.isTest = config.env === "test";
+
+// Uploads are optional: the API boots and runs fine without Cloudinary,
+// and the upload endpoints return a clear 503 instead of crashing.
+config.uploadsEnabled = Boolean(config.cloudinaryUrl);
+
 
 if (!Number.isInteger(config.port) || config.port <= 0) {
   throw new Error(`PORT must be a positive integer, got: ${process.env.PORT}`);

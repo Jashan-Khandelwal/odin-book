@@ -3,6 +3,7 @@ const { userPublicSelect, userPrivateSelect } = require("../db/selects");
 const { NotFoundError } = require("../lib/errors");
 const { cursorWhere, cursorOrderBy, buildPage } = require("../lib/pagination");
 const { attachViewerStatus } = require("./relationship");
+const storage = require("./storageService");
 
 // For a page of users, work out the viewer's relationship to each of them
 // in ONE extra query rather than one query per user.
@@ -126,4 +127,49 @@ async function updateMe({ viewerId, displayName, bio, isPrivate }) {
   });
 }
 
-module.exports = { listUsers, getProfile, updateMe };
+async function updateAvatar({ viewerId, buffer }) {
+  const current = await prisma.user.findUnique({
+    where: { id: viewerId },
+    select: { avatarPublicId: true },
+  });
+
+  // Order matters: upload the new one, THEN point the database at it, THEN
+  // delete the old one. If any step fails, the profile still has a valid
+  // image — the worst outcome is one orphaned file.
+  const { url, publicId } = await storage.saveAvatar(buffer);
+
+  const user = await prisma.user.update({
+    where: { id: viewerId },
+    data: { avatarUrl: url, avatarPublicId: publicId },
+    select: userPrivateSelect,
+  });
+
+  await storage.removeImage(current?.avatarPublicId);
+
+  return user;
+}
+
+async function removeAvatar({ viewerId }) {
+  const current = await prisma.user.findUnique({
+    where: { id: viewerId },
+    select: { avatarPublicId: true },
+  });
+
+  const user = await prisma.user.update({
+    where: { id: viewerId },
+    data: { avatarUrl: null, avatarPublicId: null },
+    select: userPrivateSelect,
+  });
+
+  await storage.removeImage(current?.avatarPublicId);
+
+  return user;
+}
+
+module.exports = {
+  listUsers,
+  getProfile,
+  updateMe,
+  updateAvatar,
+  removeAvatar,
+};
