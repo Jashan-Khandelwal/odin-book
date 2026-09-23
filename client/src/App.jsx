@@ -9,6 +9,7 @@ import Users from "./pages/Users";
 import Requests from "./pages/Requests";
 import Profile from "./pages/Profile";
 import PostDetail from "./pages/PostDetail";
+import Connections from "./pages/Connections";
 
 export default function App() {
   return (
@@ -27,6 +28,8 @@ export default function App() {
               <Route path="/requests" element={<Requests />} />
               <Route path="/u/:username" element={<Profile />} />
               <Route path="/p/:postId" element={<PostDetail />} />
+              <Route path="/u/:username/followers" element={<Connections direction="followers" />} />
+              <Route path="/u/:username/following" element={<Connections direction="following" />} />
             </Route>
           </Route>
 
