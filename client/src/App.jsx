@@ -8,6 +8,7 @@ import Feed from "./pages/Feed";
 import Users from "./pages/Users";
 import Requests from "./pages/Requests";
 import Profile from "./pages/Profile";
+import PostDetail from "./pages/PostDetail";
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
               <Route path="/users" element={<Users />} />
               <Route path="/requests" element={<Requests />} />
               <Route path="/u/:username" element={<Profile />} />
+              <Route path="/p/:postId" element={<PostDetail />} />
             </Route>
           </Route>
 
