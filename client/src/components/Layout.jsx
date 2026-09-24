@@ -1,8 +1,15 @@
 import { NavLink, Outlet, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import Avatar from "./Avatar";
+import { useNotifications } from "../context/NotificationContext";
 
 const linkBase = "px-3 py-2 rounded-lg text-sm font-medium transition-colors";
+
+{
+  /* <NavLink>
+
+This is exactly a <Link>, with one extra feature: it checks "is the current URL my to?" and gives you isActive so you can style it differently. That's how the current tab in your navbar gets highlighted. */
+}
 
 function NavItem({ to, children }) {
   return (
@@ -24,6 +31,7 @@ function NavItem({ to, children }) {
 
 export default function Layout() {
   const { user, logout } = useAuth();
+  const { unreadCount } = useNotifications();
 
   return (
     <div className="min-h-screen">
@@ -36,6 +44,16 @@ export default function Layout() {
           <NavItem to="/">Feed</NavItem>
           <NavItem to="/users">People</NavItem>
           <NavItem to="/requests">Requests</NavItem>
+          <NavItem to="/notifications">
+            <span className="relative">
+              Alerts
+              {unreadCount > 0 && (
+                <span className="absolute -top-1.5 -right-3 min-w-4 rounded-full bg-indigo-500 px-1 text-[10px] leading-4 font-semibold text-white">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
+            </span>
+          </NavItem>
 
           <div className="ml-auto flex items-center gap-3">
             <Link

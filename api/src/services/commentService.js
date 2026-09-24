@@ -3,6 +3,7 @@ const { commentSelect } = require("../db/selects");
 const { NotFoundError, ForbiddenError } = require("../lib/errors");
 const { cursorWhere, cursorOrderBy, buildPage } = require("../lib/pagination");
 const { assertPostVisible } = require("./visibility");
+const { notify } = require("./notificationService");
 
 // Strips the internal `post` field and works out permissions. No extra
 // query — commentSelect already fetched the post's authorId.
@@ -21,11 +22,18 @@ function decorate(comment, viewerId) {
 
 // POST /posts/:postId/comments
 async function createComment({ viewerId, postId, content }) {
-  await assertPostVisible(postId, viewerId);
+  const post = await assertPostVisible(postId, viewerId);
 
   const comment = await prisma.comment.create({
     data: { content: content.trim(), postId, authorId: viewerId },
     select: commentSelect,
+  });
+
+  await notify({
+    recipientId: post.authorId,
+    actorId: viewerId,
+    type: "COMMENT",
+    postId,
   });
 
   return decorate(comment, viewerId);

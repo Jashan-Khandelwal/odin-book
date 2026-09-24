@@ -8,6 +8,7 @@ const {
 } = require("../lib/errors");
 const { cursorWhere, cursorOrderBy, buildPage } = require("../lib/pagination");
 const { attachViewerStatus } = require("./relationship");
+const { notify, withdraw } = require("./notificationService");
 
 // Every route here names the other person by username, so this runs first.
 async function findByUsername(username) {
@@ -43,39 +44,93 @@ async function assertCanViewGraph(viewerId, target) {
 async function follow({ viewerId, username }) {
   const target = await findByUsername(username);
 
-  // The CHECK constraint would also catch this, but a clean 400 beats a
-  // database exception.
   if (target.id === viewerId) {
-    throw new BadRequestError("you cannot follow yourself");
+    throw new BadRequestError("You cannot follow yourself.");
   }
 
-  // A private account has to approve. A public one does not.
   const status = target.isPrivate ? "PENDING" : "ACCEPTED";
 
-  const row = await prisma.follow.upsert({
-    where: {
-      followerId_followingId: {
-        followerId: viewerId,
-        followingId: target.id,
-      },
-    },
-    create: { followerId: viewerId, followingId: target.id, status },
-    // Already following: change nothing. An empty update is what makes
-    // this idempotent, and it stops a second PUT from knocking an
-    // ACCEPTED follow back to PENDING.
-    update: {},
-    select: { status: true },
+  // createMany with skipDuplicates tells us whether a row was actually
+  // inserted — `count` is 1 for a new follow, 0 if it already existed.
+  // upsert can't tell us that, and we only want to notify on a NEW follow.
+  const inserted = await prisma.follow.createMany({
+    data: [{ followerId: viewerId, followingId: target.id, status }],
+    skipDuplicates: true,
   });
-  return { status: row.status };
+
+  if (inserted.count === 0) {
+    // Already following or already requested — report the real status and
+    // send nothing.
+    const existing = await prisma.follow.findUnique({
+      where: {
+        followerId_followingId: {
+          followerId: viewerId,
+          followingId: target.id,
+        },
+      },
+      select: { status: true },
+    });
+    return { status: existing.status };
+  }
+
+  await notify({
+    recipientId: target.id,
+    actorId: viewerId,
+    type: status === "PENDING" ? "FOLLOW_REQUEST" : "NEW_FOLLOWER",
+  });
+
+  return { status };
 }
+// async function follow({ viewerId, username }) {
+//   const target = await findByUsername(username);
+
+//   // The CHECK constraint would also catch this, but a clean 400 beats a
+//   // database exception.
+//   if (target.id === viewerId) {
+//     throw new BadRequestError("you cannot follow yourself");
+//   }
+
+//   // A private account has to approve. A public one does not.
+//   const status = target.isPrivate ? "PENDING" : "ACCEPTED";
+
+//   const row = await prisma.follow.upsert({
+//     where: {
+//       followerId_followingId: {
+//         followerId: viewerId,
+//         followingId: target.id,
+//       },
+//     },
+//     create: { followerId: viewerId, followingId: target.id, status },
+//     // Already following: change nothing. An empty update is what makes
+//     // this idempotent, and it stops a second PUT from knocking an
+//     // ACCEPTED follow back to PENDING.
+//     update: {},
+//     select: { status: true },
+//   });
+//   return { status: row.status };
+// }
 
 async function unfollow({ viewerId, username }) {
   const target = await findByUsername(username);
 
-  await prisma.follow.findMany({
+  await prisma.follow.deleteMany({
     where: { followerId: viewerId, followingId: target.id },
   });
+
+  // Cancelling a request should take the request notification with it.
+  await withdraw({
+    recipientId: target.id,
+    actorId: viewerId,
+    type: "FOLLOW_REQUEST",
+  });
 }
+// async function unfollow({ viewerId, username }) {
+//   const target = await findByUsername(username);
+
+//   await prisma.follow.findMany({
+//     where: { followerId: viewerId, followingId: target.id },
+//   });
+// }
 
 // GET /follow-requests — people waiting for me to approve them.
 async function listRequests({ viewerId, cursor, limit }) {
@@ -103,8 +158,6 @@ async function listRequests({ viewerId, cursor, limit }) {
 async function acceptRequest({ viewerId, username }) {
   const requester = await findByUsername(username);
 
-  // updateMany, not update: the filter includes status, so this ONLY ever
-  // moves a row from PENDING to ACCEPTED. It returns how many rows changed.
   const result = await prisma.follow.updateMany({
     where: {
       followerId: requester.id,
@@ -115,11 +168,38 @@ async function acceptRequest({ viewerId, username }) {
   });
 
   if (result.count === 0) {
-    throw new NotFoundError("no pending follow requrest from that user.");
+    throw new NotFoundError("No pending follow request from that user.");
   }
+
+  // The notification goes the other way: tell the requester they're in.
+  await notify({
+    recipientId: requester.id,
+    actorId: viewerId,
+    type: "FOLLOW_ACCEPTED",
+  });
 
   return { status: "ACCEPTED" };
 }
+// async function acceptRequest({ viewerId, username }) {
+//   const requester = await findByUsername(username);
+
+//   // updateMany, not update: the filter includes status, so this ONLY ever
+//   // moves a row from PENDING to ACCEPTED. It returns how many rows changed.
+//   const result = await prisma.follow.updateMany({
+//     where: {
+//       followerId: requester.id,
+//       followingId: viewerId,
+//       status: "PENDING",
+//     },
+//     data: { status: "ACCEPTED" },
+//   });
+
+//   if (result.count === 0) {
+//     throw new NotFoundError("no pending follow requrest from that user.");
+//   }
+
+//   return { status: "ACCEPTED" };
+// }
 
 // POST /follow-requests/:username/reject
 async function rejectRequest({ viewerId, username }) {

@@ -3,6 +3,7 @@ const { userPublicSelect } = require("../db/selects");
 const { cursorWhere, cursorOrderBy, buildPage } = require("../lib/pagination");
 const { assertPostVisible } = require("./visibility");
 const { attachViewerStatus } = require("./relationship");
+const { notify, withdraw } = require("./notificationService");
 
 // Recounted on every change. Deliberately naive — Phase 12 replaces this
 // with a stored counter once there's enough data to measure the difference.
@@ -12,14 +13,19 @@ function countLikes(postId) {
 
 // PUT /posts/:postId/like
 async function like({ viewerId, postId }) {
-  await assertPostVisible(postId, viewerId);
+  const post = await assertPostVisible(postId, viewerId);
 
-  // upsert with an empty update: liking twice leaves the single existing
-  // row untouched instead of failing on the composite primary key.
   await prisma.like.upsert({
     where: { userId_postId: { userId: viewerId, postId } },
     create: { userId: viewerId, postId },
     update: {},
+  });
+
+  await notify({
+    recipientId: post.authorId,
+    actorId: viewerId,
+    type: "LIKE",
+    postId,
   });
 
   return { liked: true, likeCount: await countLikes(postId) };
@@ -27,11 +33,17 @@ async function like({ viewerId, postId }) {
 
 // DELETE /posts/:postId/like
 async function unlike({ viewerId, postId }) {
-  await assertPostVisible(postId, viewerId);
+  const post = await assertPostVisible(postId, viewerId);
 
-  // deleteMany doesn't throw on zero rows — "not liked" is already the
-  // state the caller asked for.
   await prisma.like.deleteMany({ where: { userId: viewerId, postId } });
+
+  // Undoing the like undoes the notification too.
+  await withdraw({
+    recipientId: post.authorId,
+    actorId: viewerId,
+    type: "LIKE",
+    postId,
+  });
 
   return { liked: false, likeCount: await countLikes(postId) };
 }

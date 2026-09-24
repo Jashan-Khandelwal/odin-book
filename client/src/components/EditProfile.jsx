@@ -17,8 +17,8 @@ export default function EditProfile({ profile, onSaved, onCancel }) {
   // Every save updates BOTH the page and the auth context, so the nav bar
   // avatar and name change at the same moment.
   function applied(user) {
-    setUser(user);
-    onSaved(user);
+    setUser(user); // AuthContext → navbar avatar and name
+    onSaved(user); // Profile page → header on this page
   }
 
   async function save(e) {

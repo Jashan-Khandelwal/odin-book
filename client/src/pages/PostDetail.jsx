@@ -1,3 +1,14 @@
+// The whole page
+// URL /p/clx9abc
+//   → useParams → postId = "clx9abc"
+//   → effect → GET /posts/clx9abc → setPost(data.post)
+
+// PostDetail (owns: post)
+//  ├─ ← Back          → navigate(-1)
+//  ├─ PostCard        → like: setPost    | delete: navigate("/")
+//  └─ Comments        → owns comment list via usePaginated
+//                       add/delete → onCountChange(±1) → setPost(count ± 1)
+
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
@@ -41,6 +52,7 @@ export default function PostDetail() {
         ← Back
       </button>
 
+{/* PostCard doesn't know or care which page it's on. It just calls onChange and onDelete, and the parent decides what they mean. */}
       <PostCard post={post} onChange={setPost} onDelete={() => navigate("/")} />
 
       <Comments

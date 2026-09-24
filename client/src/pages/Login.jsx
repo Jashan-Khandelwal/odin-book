@@ -1,3 +1,17 @@
+// Full flow: wrong password
+// You type an email and a wrong password, then press Enter.
+// preventDefault means no reload, and run(...) starts.
+// busy = true, so the button shows "Signing in…" and is disabled.
+// login runs POST /auth/login, which returns 401, and api.js throws.
+// catch sets error = "Invalid email or password".
+// finally sets busy = false.
+// The page redraws with the red banner and the button enabled again.
+
+// Full flow: correct password
+// Steps 1–3 are the same.
+// login succeeds: the token is saved, setUser(jashan) runs.
+// navigate(destination) sends you to / or wherever you were going.
+// RequireAuth sees the user, and Layout and Feed render.
 import { useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -17,8 +31,12 @@ export default function Login() {
   // Where RequireAuth was trying to send them, or the feed.
   const destination = location.state?.from?.pathname || "/";
 
+  //Already logged in? Leave
   if (user) return <Navigate to={destination} replace />;
 
+  // action is a function passed in, so the same wrapper works for both buttons:
+  // the form uses run(() => login(email, password))
+  // the guest button uses run(loginAsGuest)
   async function run(action) {
     setBusy(true);
     setError(null);
@@ -114,3 +132,19 @@ export function Input({ label, error, value, onChange, type = "text" }) {
     </label>
   );
 }
+
+// What Input produces. When you write:
+
+// jsx
+// <Input label="Email" type="email" value={email} onChange={setEmail} error={fields.email} />
+
+// React turns it into this HTML:
+
+// html
+// <label>
+//   <span>Email</span>
+//   <input type="email" value="..." class="..." />
+//   <span class="text-red-400">Invalid email</span>   ← only if there's an error
+// </label>
+
+// So one Input equals label text, the input box, and an error message underneath.

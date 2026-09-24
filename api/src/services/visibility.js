@@ -24,9 +24,11 @@ function visibleToViewer(viewerId) {
 async function assertPostVisible(postId, viewerId) {
   const post = await prisma.post.findFirst({
     where: { AND: [{ id: postId }, visibleToViewer(viewerId)] },
-    select: { id: true },
+    select: { id: true, authorId: true },
   });
-  if (!post) throw new NotFoundError("post not found.");
+  if (!post) throw new NotFoundError("Post not found.");
+  return post;
 }
+
 
 module.exports = { visibleToViewer, assertPostVisible };

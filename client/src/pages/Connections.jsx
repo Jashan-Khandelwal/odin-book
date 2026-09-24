@@ -6,6 +6,9 @@ import LoadMore from "../components/LoadMore";
 
 // One component for both /followers and /following — the API endpoints are
 // mirror images, so the page is too.
+// App.jsx
+{/* <Route path="/u/:username/followers" element={<Connections direction="followers" />} /> */}
+{/* <Route path="/u/:username/following" element={<Connections direction="following" />} /> */}
 export default function Connections({ direction }) {
   const { username } = useParams();
   const list = usePaginated(`/users/${username}/${direction}`, "users");

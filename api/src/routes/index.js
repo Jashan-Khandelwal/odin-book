@@ -20,6 +20,8 @@ router.get("/feed", requireAuth, postController.feed);
 
 router.use("/comments", require("./commentRouter"));
 
+router.use("/notifications", require("./notificationRouter"));
+
 router.get("/health", async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;

@@ -7,6 +7,7 @@ export default function FollowButton({ user, onChange }) {
   const [busy, setBusy] = useState(false);
   const status = user.viewer?.followStatus ?? null;
 
+  // If you already have a status (PENDING or ACCEPTED), it sends DELETE. One endpoint covers both cases: if you were following, you unfollow; if you'd requested, the request is cancelled. The new status is null.
   async function toggle() {
     if (busy) return;
     setBusy(true);

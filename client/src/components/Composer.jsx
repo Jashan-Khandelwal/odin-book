@@ -7,12 +7,16 @@ const MAX = 500;
 
 export default function Composer({ onCreated }) {
   const { user } = useAuth();
-  const [content, setContent] = useState("");
-  const [file, setFile] = useState(null);
-  const [preview, setPreview] = useState(null);
+  const [content, setContent] = useState(""); // text typed
+  const [file, setFile] = useState(null); // the chosen image file
+  const [preview, setPreview] = useState(null); // temporary URL to show the image
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
-  const fileInput = useRef(null);
+  const fileInput = useRef(null); // points at the hidden <input type="file">
+
+  //   URL.createObjectURL(file) makes a temporary URL that points at the file in browser memory, something like:
+  // blob:http://localhost:5175/8f3a-4c21-...
+  // Put that in <img src={preview}> and the image shows instantly, with no upload.
 
   // An object URL holds the file in memory until revoked, so its lifetime
   // is tied to the selected file.
@@ -62,6 +66,16 @@ export default function Composer({ onCreated }) {
     }
   }
 
+  //   This is the same chain as the like button:
+
+  // jsx
+  // // Feed.jsx
+  // <Composer onCreated={feed.prependItem} />
+  // onCreated(post)
+  //   → feed.prependItem(post)
+  //   → setItems(prev => [post, ...prev])   ← state change in Feed
+  //   → Feed redraws
+  //   → new PostCard at the top
   return (
     <form
       onSubmit={submit}
@@ -129,3 +143,14 @@ export default function Composer({ onCreated }) {
     </form>
   );
 }
+
+// Full flow: posting with an image
+// 1. Type "look at this"          → setContent → counter shows 12/500
+// 2. Click "+ Image", pick cat.png → setFile(cat.png)
+// 3. Effect runs                   → createObjectURL → setPreview(blob:...) → image shows
+// 4. Click Post                    → submit → busy = true → "Posting…"
+// 5. FormData { content, image }   → POST /posts (multipart)
+// 6. Server saves, returns post    → onCreated(post) → prependItem → post on top of feed
+// 7. setContent("") + clearFile()  → box empty, preview gone
+// 8. file became null              → effect cleanup → revokeObjectURL (memory freed)
+// 9. finally                       → busy = false

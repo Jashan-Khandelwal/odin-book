@@ -35,6 +35,16 @@ function CommentIcon() {
   );
 }
 
+// {
+//   id: "clx...",
+//   content: "hello world",
+//   imageUrl: null,
+//   createdAt: "2026-09-23T10:00:00Z",
+//   likeCount: 5,
+//   commentCount: 2,
+//   author: { username: "jashan", displayName: "Jashan", avatarUrl: null },
+//   viewer: { hasLiked: false, isAuthor: true }   // about YOU, the viewer
+// }
 export default function PostCard({ post, onChange, onDelete }) {
   async function toggleLike() {
     const wasLiked = post.viewer.hasLiked;

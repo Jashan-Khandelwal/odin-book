@@ -9,6 +9,7 @@ export default function Avatar({ user, size = 40 }) {
     .join("")
     .toUpperCase();
 
+  //Has a photo → show the image
   if (user?.avatarUrl) {
     return (
       <img
@@ -22,6 +23,7 @@ export default function Avatar({ user, size = 40 }) {
     );
   }
 
+  //No photo → show initials
   return (
     <div
       className="rounded-full bg-ink-800 text-ink-400 grid place-items-center font-semibold shrink-0"
