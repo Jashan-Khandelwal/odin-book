@@ -29,6 +29,7 @@ async function assertPostVisible(postId, viewerId) {
   if (!post) throw new NotFoundError("Post not found.");
   return post;
 }
+// Returning the post means callers also know who to notify.
 
 
 module.exports = { visibleToViewer, assertPostVisible };

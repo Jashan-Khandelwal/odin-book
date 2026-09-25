@@ -2,6 +2,7 @@ const prisma = require("../db/prisma");
 const logger = require("../lib/logger");
 const { userPublicSelect } = require("../db/selects");
 const { cursorWhere, cursorOrderBy, buildPage } = require("../lib/pagination");
+const { emitToUser } = require("../lib/realtime");
 
 const notificationSelect = {
   id: true,
@@ -14,13 +15,32 @@ const notificationSelect = {
 
 // Best-effort. A notification failing must NEVER fail the action that
 // caused it — nobody should lose a comment because a row didn't insert.
+// async function notify({ recipientId, actorId, type, postId = null }) {
+//   // Never tell someone about their own action.
+//   if (recipientId === actorId) return null;
+
+//   try {
+//     // At most one notification per (recipient, actor, type, post). Without
+//     // this, like → unlike → like would stack up three of them.
+//     const [, created] = await prisma.$transaction([
+//       prisma.notification.deleteMany({
+//         where: { recipientId, actorId, type, postId },
+//       }),
+//       prisma.notification.create({
+//         data: { recipientId, actorId, type, postId },
+//         select: notificationSelect,
+//       }),
+//     ]);
+//     return created;
+//   } catch (err) {
+//     logger.warn({ err, recipientId, actorId, type }, "notify failed");
+//     return null;
+//   }
+// }
 async function notify({ recipientId, actorId, type, postId = null }) {
-  // Never tell someone about their own action.
   if (recipientId === actorId) return null;
 
   try {
-    // At most one notification per (recipient, actor, type, post). Without
-    // this, like → unlike → like would stack up three of them.
     const [, created] = await prisma.$transaction([
       prisma.notification.deleteMany({
         where: { recipientId, actorId, type, postId },
@@ -30,6 +50,14 @@ async function notify({ recipientId, actorId, type, postId = null }) {
         select: notificationSelect,
       }),
     ]);
+
+    // Push it to any tab that user has open. The count rides along so the
+    // client never has to ask for it.
+    emitToUser(recipientId, "notification:new", {
+      notification: created,
+      unreadCount: await unreadCount({ viewerId: recipientId }),
+    });
+
     return created;
   } catch (err) {
     logger.warn({ err, recipientId, actorId, type }, "notify failed");
@@ -39,12 +67,30 @@ async function notify({ recipientId, actorId, type, postId = null }) {
 
 // The inverse: withdraw a notification when its cause is undone —
 // unliking, or cancelling a follow request.
+// async function withdraw({ recipientId, actorId, type, postId = null }) {
+//   if (recipientId === actorId) return;
+//   try {
+//     await prisma.notification.deleteMany({
+//       where: { recipientId, actorId, type, postId },
+//     });
+//   } catch (err) {
+//     logger.warn({ err, recipientId, actorId, type }, "withdraw failed");
+//   }
+// }
+
 async function withdraw({ recipientId, actorId, type, postId = null }) {
   if (recipientId === actorId) return;
   try {
-    await prisma.notification.deleteMany({
+    const { count } = await prisma.notification.deleteMany({
       where: { recipientId, actorId, type, postId },
     });
+
+    // Only tell them if something actually disappeared.
+    if (count > 0) {
+      emitToUser(recipientId, "notification:sync", {
+        unreadCount: await unreadCount({ viewerId: recipientId }),
+      });
+    }
   } catch (err) {
     logger.warn({ err, recipientId, actorId, type }, "withdraw failed");
   }

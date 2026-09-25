@@ -2,6 +2,8 @@ const createApp = require("./app");
 const config = require("./config");
 const logger = require("./lib/logger");
 const prisma = require("./db/prisma");
+const { attachSocketServer } = require("./socket");
+const { closeIo } = require("./lib/realtime");
 
 const app = createApp();
 
@@ -9,25 +11,49 @@ const server = app.listen(config.port, () => {
   logger.info({ port: config.port, env: config.env }, "odinbook api listening");
 });
 
+// Socket.io shares the HTTP server, so it's the same port and the same
+// CORS origins — no second listener to deploy or configure.
+attachSocketServer(server);
+
 // Graceful shutdown. On deploy the platform sends SIGTERM and then SIGKILLs
 // after a grace period. Without this, in-flight requests are severed
 // mid-transaction and users see connection resets on every deploy.
 let shuttingDown = false;
 
+// async function shutdown(signal) {
+//   if (shuttingDown) return; // a second Ctrl-C should not re-enter
+//   shuttingDown = true;
+//   logger.info({ signal }, "shutting down");
+
+//   // Stop accepting NEW connections; let in-flight ones finish.
+//   server.close(async () => {
+//     await prisma.$disconnect();
+//     logger.info("shutdown complete");
+//     process.exit(0);
+//   });
+
+//   // If a request hangs, don't wait forever. .unref() so this timer alone
+//   // never keeps the process alive.
+//   setTimeout(() => {
+//     logger.error("forced shutdown after 10s timeout");
+//     process.exit(1);
+//   }, 10_000).unref();
+// }
 async function shutdown(signal) {
-  if (shuttingDown) return; // a second Ctrl-C should not re-enter
+  if (shuttingDown) return;
   shuttingDown = true;
   logger.info({ signal }, "shutting down");
 
-  // Stop accepting NEW connections; let in-flight ones finish.
+  // Close sockets first — otherwise open WebSocket connections keep the
+  // HTTP server alive and server.close() never fires its callback.
+  await closeIo();
+
   server.close(async () => {
     await prisma.$disconnect();
     logger.info("shutdown complete");
     process.exit(0);
   });
 
-  // If a request hangs, don't wait forever. .unref() so this timer alone
-  // never keeps the process alive.
   setTimeout(() => {
     logger.error("forced shutdown after 10s timeout");
     process.exit(1);

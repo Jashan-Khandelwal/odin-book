@@ -2,6 +2,7 @@ import { NavLink, Outlet, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import Avatar from "./Avatar";
 import { useNotifications } from "../context/NotificationContext";
+import Toast from "./Toast";
 
 const linkBase = "px-3 py-2 rounded-lg text-sm font-medium transition-colors";
 
@@ -76,6 +77,8 @@ export default function Layout() {
       <main className="mx-auto max-w-2xl px-4 py-6">
         <Outlet />
       </main>
+
+      <Toast />
     </div>
   );
 }
