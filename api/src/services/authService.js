@@ -60,9 +60,25 @@ async function login({ email, password }) {
   return { user: pick(user, userPrivateSelect), token: issueToken(user) };
 }
 
+// async function createGuest() {
+//   // Random suffix so two guests arriving at the same moment can't collide,
+//   // without needing a lookup first.
+//   const suffix = randomBytes(4).toString("hex");
+
+//   const user = await prisma.user.create({
+//     data: {
+//       username: `guest_${suffix}`,
+//       displayName: "Guest",
+//       email: `guest_${suffix}@guest.odinbook.local`,
+//       passwordHash: null, // a guest can never log back in
+//       isGuest: true,
+//     },
+//     select: userPrivateSelect,
+//   });
+
+//   return { user, token: issueToken(user) };
+// }
 async function createGuest() {
-  // Random suffix so two guests arriving at the same moment can't collide,
-  // without needing a lookup first.
   const suffix = randomBytes(4).toString("hex");
 
   const user = await prisma.user.create({
@@ -70,11 +86,31 @@ async function createGuest() {
       username: `guest_${suffix}`,
       displayName: "Guest",
       email: `guest_${suffix}@guest.odinbook.local`,
-      passwordHash: null, // a guest can never log back in
+      passwordHash: null,
       isGuest: true,
     },
     select: userPrivateSelect,
   });
+
+  // A guest who follows nobody lands on an empty feed, which reads as a
+  // broken app. Follow a few public accounts so there is something to see.
+  const suggestions = await prisma.user.findMany({
+    where: { isPrivate: false, isGuest: false, id: { not: user.id } },
+    select: { id: true },
+    orderBy: { id: "asc" },
+    take: 8,
+  });
+
+  if (suggestions.length > 0) {
+    await prisma.follow.createMany({
+      data: suggestions.map((u) => ({
+        followerId: user.id,
+        followingId: u.id,
+        status: "ACCEPTED",
+      })),
+      skipDuplicates: true,
+    });
+  }
 
   return { user, token: issueToken(user) };
 }
