@@ -49,7 +49,7 @@ function createApp() {
       // The platform polls /health every few seconds. Logging it would
       // bury everything else.
       autoLogging: {
-        ignore: (req) => req.url === "/api/v1/health",
+        ignore: (req) => ["/api/v1/health", "/api/v1/ping"].includes(req.url),
       },
     }),
   );

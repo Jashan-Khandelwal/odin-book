@@ -34,5 +34,9 @@ router.get("/health", async (req, res) => {
 
   res.json({ status: "ok", uptime: process.uptime() });
 });
+// GET /api/v1/ping
+// Keeps the free Render instance awake. It doesn't touch the database,
+// so Neon can still go to sleep when nobody is using the app.
+router.get("/ping", (req, res) => res.send("ok"));
 
 module.exports = router;
