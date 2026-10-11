@@ -45,6 +45,13 @@ model Post {
   content   String   @db.Text
   imageUrl  String?
   imagePublicId String?
+
+  // Denormalised. Maintained in the same transaction as the row they count,
+  // because COUNT(*) over the full Like/Comment tables cost 25ms per feed
+  // page and prevented Postgres from using the createdAt index.
+  likeCount     Int      @default(0)
+  commentCount  Int      @default(0)
+  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -54,6 +61,11 @@ model Post {
   comments      Comment[]
   likes         Like[]
   notifications Notification[]
+  // Serves "this author's posts, newest first" — the profile timeline.
+  @@index([authorId, createdAt(sort: Desc)])
+  // Serves the feed's global ordering, so the planner can walk the index
+  // in order and stop after LIMIT instead of sorting everything.
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
 }
 
 model Comment {
@@ -67,6 +79,8 @@ model Comment {
 
   author   User @relation(fields: [authorId], references: [id], onDelete: Cascade)
   authorId Int
+
+  @@index([postId, createdAt])
 }
 
 model Like {
@@ -80,6 +94,10 @@ model Like {
 
   // The pair IS the identity — there is no such thing as two of the same like.
   @@id([userId, postId])
+
+  // The composite PK is (userId, postId), which by the leftmost-prefix rule
+  // answers "what did this user like" but NOT "who liked this post".
+  @@index([postId])
 }
 
 model Follow {
@@ -93,6 +111,10 @@ model Follow {
   followingId Int
 
   @@id([followerId, followingId])
+
+  // The PK covers followerId-leading queries. This covers the other
+  // direction: my followers, and my pending requests.
+  @@index([followingId, status])
 }
 
 enum FollowStatus {
@@ -115,6 +137,8 @@ model Notification {
   // Null for follow notifications; set for like and comment notifications.
   post   Post? @relation(fields: [postId], references: [id], onDelete: Cascade)
   postId Int?
+
+  @@index([recipientId, read, createdAt(sort: Desc)])
 }
 
 enum NotificationType {

@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "seed": "LOG_LEVEL=info node prisma/seed.js"
+    "seed": "LOG_LEVEL=info node prisma/seed.js",
+    "seed:large": "LOG_LEVEL=info node prisma/seed-large.js",
+    "reconcile": "LOG_LEVEL=info node prisma/reconcile-counts.js"
   },
   "keywords": [],
   "author": "",

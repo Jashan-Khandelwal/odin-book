@@ -303,5 +303,162 @@ Each is revisited below.
 
 ## Scaling notes
 
-_To be written against measured numbers: seed ~20k posts, read the feed query
-plan, add indexes, and record the before/after._
+Measured, not assumed. Test dataset: 500 users, 20,000 posts, 99,567 likes,
+40,000 comments, ~15,000 follow edges, on local PostgreSQL 18. The test user
+follows 172 accounts, so roughly 34% of all posts qualify for their feed.
+
+### Result
+
+| Measurement                   | Before   | After        |
+| ----------------------------- | -------- | ------------ |
+| `GET /feed?limit=20` (median) | 17.6 ms  | **3.1 ms**   |
+| Database time per request     | 29 ms    | **4 ms**     |
+| Feed query                    | 30.65 ms | **0.243 ms** |
+| Buffers touched               | 1,620    | 271          |
+| Rows examined                 | ~160,000 | ~300         |
+
+Two changes produced that, and the second was a surprise.
+
+### 1. Index design
+
+The feed sorts globally by time and filters by a set of authors. With no index
+beyond the primary key, Postgres read all 20,000 posts, kept 6,800, and sorted
+them to find 21:
+
+```
+Seq Scan on "Post"  (actual rows=6800)  Rows Removed by Filter: 13200
+Sort  Sort Method: top-N heapsort  Memory: 34kB
+Execution Time: 1.743 ms
+```
+
+Adding `@@index([createdAt DESC, id DESC])` let it walk the index already in
+sorted order, apply the author filter as it went, and stop once it had 21:
+
+```
+Index Scan using "Post_createdAt_id_idx"  (actual rows=65)
+  Rows Removed by Filter: 44
+Execution Time: 0.065 ms
+```
+
+65 rows instead of 20,000, no sort at all — 27× faster.
+
+The arithmetic predicts that exactly: 34% of posts match, so 21 matches should
+appear within 21 ÷ 0.34 ≈ 62 rows. Observed: 65.
+
+That also shows the index's limit. It wins because matches are _dense_. A user
+following three accounts out of 500 would have to walk thousands of index
+entries to collect 21 rows, and the sequential scan would become competitive
+again. Which plan is right depends on the follow ratio, and Postgres decides
+from the statistics `ANALYZE` collects — not from the index existing.
+
+A second index, `@@index([authorId, createdAt DESC])`, serves the profile
+timeline, which filters by one author and sorts by time. Column order follows
+the **leftmost-prefix rule**: an index on `(A, B)` serves filters on `A`, or on
+`A` and `B`, but never on `B` alone. The feed's global ordering cannot use it.
+
+The same rule explains `@@index([postId])` on `Like`. That table's primary key
+is `(userId, postId)` — a perfectly good index that was **useless** for
+counting a post's likes, because `postId` is not leading. It read all 99,567
+rows to find 5. With the index: an `Index Only Scan` over 3 buffers, answered
+entirely from the index without touching the table.
+
+### 2. The ORM's `_count` was the real bottleneck
+
+Prisma's `_count` in a `select` does not compile to a correlated subquery per
+row. It builds a full aggregate over the entire related table and left-joins
+the result:
+
+```sql
+LEFT JOIN (SELECT "postId", COUNT(*) FROM "Like" WHERE 1=1
+           GROUP BY "postId") AS aggr_selection_0_Like ...
+LEFT JOIN (SELECT "postId", COUNT(*) FROM "Comment" WHERE 1=1
+           GROUP BY "postId") AS aggr_selection_1_Comment ...
+```
+
+Note `WHERE 1=1` — there is no filter, so the index on `Like.postId` cannot
+help. Every feed request hashed 99,567 likes and 40,000 comments into two
+20,000-row tables in order to annotate 21 posts: **25 ms of the 30.65 ms, 81%
+of the query.**
+
+It cost a second thing that was not obvious until the plan was read. The hash
+joins destroy the index's ordering, so the `LIMIT` can no longer push down into
+the scan — the plan reverted to `Seq Scan` + `Sort` and the 27× index win was
+silently cancelled. An ORM convenience both added 25 ms and disabled the
+optimisation added to remove it.
+
+Replacing it with `Post.likeCount` and `Post.commentCount` columns took the
+feed query to **0.243 ms** and restored the index scan.
+
+### The cost of denormalising
+
+Counters are not free, and the trade is explicit:
+
+- **Writes do more.** Liking is now two statements in one transaction — insert
+  the `Like`, then `UPDATE "Post" SET "likeCount" = "likeCount" + 1`. Reads
+  outnumber writes here by a wide margin, so this is the right direction.
+- **Correctness depends on discipline.** The increment uses Prisma's atomic
+  `increment`, which compiles to `SET x = x + 1` in SQL rather than a
+  read-modify-write in application code, so concurrent likes both land. It runs
+  inside the same transaction as the insert, so a crash cannot apply one
+  without the other. And it only fires when a row was genuinely inserted —
+  `createMany` with `skipDuplicates` reports a count, which `upsert` cannot, so
+  a double click does not inflate the number.
+- **Drift is assumed, not hoped against.** A `CHECK ("likeCount" >= 0)`
+  constraint turns silent corruption into a loud failure, and
+  `npm run reconcile` recomputes both counters from the rows they count. The
+  repair job is part of the design.
+
+### What breaks next
+
+Current state: ~3 ms per feed request, almost all of it application and HTTP
+overhead rather than Postgres. The next limits, in the order they would arrive:
+
+**Counter contention.** A post that goes viral serialises every like behind a
+row lock on its single `Post` row. The fix is to shard the counter across N
+rows and sum them, or to accept eventual consistency and batch increments
+through a queue. Not a problem at hundreds of likes per post; a real one at
+thousands per second.
+
+**Feed fan-out.** The feed is computed on read: every request walks the follow
+graph. That is correct and cheap while the follow set is small and matches are
+dense. It degrades in two ways — a user following 10,000 accounts, and the
+index's dense-match assumption failing for users following very few. The
+standard answer is fan-out **on write**: when a post is created, push its id
+into a precomputed timeline list for each follower. Reads become a single range
+read; writes become O(followers). That inverts the cost, which is why it breaks
+for accounts with millions of followers — the "celebrity problem" — and why
+real systems run a hybrid: push for ordinary accounts, pull for the few with
+huge followings, merged at read time.
+
+**Caching.** Nothing is cached. The obvious first target is the first page of
+each active user's feed in Redis, since most sessions never scroll past it.
+Invalidation is the hard part and is itself a fan-out problem: a new post must
+invalidate every follower's cached page. A short TTL (30–60 s) avoids that
+entirely at the cost of slightly stale feeds, which is usually an acceptable
+trade for a social timeline.
+
+**Connection limits.** One `PrismaClient` per process owns a pool, and Postgres
+defaults to ~100 connections. Thirty containers at 10 connections each
+exhausts that. Production already routes through a pooler (PgBouncer in
+transaction mode, via Neon), which is why migrations use a separate direct
+connection — transaction-mode pooling cannot carry the session state they need.
+
+**Read replicas.** Feed reads vastly outnumber writes, so they could go to a
+replica with writes staying on the primary. The catch is replication lag: a
+user who posts and is immediately redirected to their feed may not see their
+own post. That needs read-your-own-writes handling — route a user's reads to
+the primary for a few seconds after they write.
+
+**Unbounded growth.** `Notification` grows forever and is almost never read
+beyond the newest page. It wants a retention policy. `Post` would eventually
+want range partitioning on `createdAt`, since feeds read recent rows and
+archives are cold.
+
+### Deliberately still unfixed
+
+- No caching layer.
+- Feed is pull-based.
+- `Follow` has no index on `followerId` alone; the composite primary key covers
+  it, and that was confirmed in the query plan rather than assumed.
+- Access tokens only — refresh tokens are designed above but not built.
+- No rate limiting on write endpoints.

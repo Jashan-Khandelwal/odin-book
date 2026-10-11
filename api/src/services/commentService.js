@@ -24,9 +24,16 @@ function decorate(comment, viewerId) {
 async function createComment({ viewerId, postId, content }) {
   const post = await assertPostVisible(postId, viewerId);
 
-  const comment = await prisma.comment.create({
-    data: { content: content.trim(), postId, authorId: viewerId },
-    select: commentSelect,
+  const comment = await prisma.$transaction(async (tx) => {
+    const created = await tx.comment.create({
+      data: { content: content.trim(), postId, authorId: viewerId },
+      select: commentSelect,
+    });
+    await tx.post.update({
+      where: { id: postId },
+      data: { commentCount: { increment: 1 } },
+    });
+    return created;
   });
 
   await notify({
@@ -62,7 +69,11 @@ async function listComments({ viewerId, postId, cursor, limit }) {
 async function deleteComment({ viewerId, commentId }) {
   const comment = await prisma.comment.findUnique({
     where: { id: commentId },
-    select: { authorId: true, post: { select: { authorId: true } } },
+    select: {
+      authorId: true,
+      postId: true,
+      post: { select: { authorId: true } },
+    },
   });
 
   if (!comment) throw new NotFoundError("Comment not found.");
@@ -70,11 +81,15 @@ async function deleteComment({ viewerId, commentId }) {
   const allowed =
     comment.authorId === viewerId || comment.post.authorId === viewerId;
 
-  if (!allowed) {
-    throw new ForbiddenError("You cannot delete that comment.");
-  }
+  if (!allowed) throw new ForbiddenError("You cannot delete that comment.");
 
-  await prisma.comment.delete({ where: { id: commentId } });
+  await prisma.$transaction(async (tx) => {
+    await tx.comment.delete({ where: { id: commentId } });
+    await tx.post.update({
+      where: { id: comment.postId },
+      data: { commentCount: { decrement: 1 } },
+    });
+  });
 }
 
 module.exports = { createComment, listComments, deleteComment };

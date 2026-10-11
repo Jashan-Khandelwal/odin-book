@@ -25,6 +25,25 @@ async function attachViewerStatus(users, viewerId) {
 // For a page of posts, ONE extra query tells us which ones the viewer has
 // liked. Also flattens Prisma's _count into plain likeCount/commentCount,
 // so the API shape doesn't leak the ORM's naming.
+// async function attachPostViewerState(posts, viewerId) {
+//   if (posts.length === 0) return posts;
+
+//   const liked = await prisma.like.findMany({
+//     where: { userId: viewerId, postId: { in: posts.map((p) => p.id) } },
+//     select: { postId: true },
+//   });
+//   const likedIds = new Set(liked.map((l) => l.postId));
+
+//   return posts.map(({ _count, ...post }) => ({
+//     ...post,
+//     likeCount: _count.likes,
+//     commentCount: _count.comments,
+//     viewer: {
+//       hasLiked: likedIds.has(post.id),
+//       isAuthor: post.author.id === viewerId,
+//     },
+//   }));
+// }
 async function attachPostViewerState(posts, viewerId) {
   if (posts.length === 0) return posts;
 
@@ -34,10 +53,8 @@ async function attachPostViewerState(posts, viewerId) {
   });
   const likedIds = new Set(liked.map((l) => l.postId));
 
-  return posts.map(({ _count, ...post }) => ({
+  return posts.map((post) => ({
     ...post,
-    likeCount: _count.likes,
-    commentCount: _count.comments,
     viewer: {
       hasLiked: likedIds.has(post.id),
       isAuthor: post.author.id === viewerId,

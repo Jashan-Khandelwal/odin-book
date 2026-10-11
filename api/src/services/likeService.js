@@ -5,20 +5,41 @@ const { assertPostVisible } = require("./visibility");
 const { attachViewerStatus } = require("./relationship");
 const { notify, withdraw } = require("./notificationService");
 
-// Recounted on every change. Deliberately naive — Phase 12 replaces this
-// with a stored counter once there's enough data to measure the difference.
-function countLikes(postId) {
-  return prisma.like.count({ where: { postId } });
-}
+// No more COUNT(*). The counter is the source of truth for reads; the Like
+// rows are the source of truth for correctness, and reconcile-counts.js
+// repairs the counter from them if they ever disagree.
 
-// PUT /posts/:postId/like
 async function like({ viewerId, postId }) {
   const post = await assertPostVisible(postId, viewerId);
 
-  await prisma.like.upsert({
-    where: { userId_postId: { userId: viewerId, postId } },
-    create: { userId: viewerId, postId },
-    update: {},
+  // The insert and the increment must be one unit, or a crash between them
+  // leaves the counter wrong forever.
+  const likeCount = await prisma.$transaction(async (tx) => {
+    // createMany + skipDuplicates reports whether a row was actually
+    // inserted. upsert cannot tell us that, and the counter must only move
+    // on a NEW like — otherwise a double click inflates it.
+    const { count } = await tx.like.createMany({
+      data: [{ userId: viewerId, postId }],
+      skipDuplicates: true,
+    });
+
+    if (count === 0) {
+      const existing = await tx.post.findUnique({
+        where: { id: postId },
+        select: { likeCount: true },
+      });
+      return existing.likeCount;
+    }
+
+    // `increment` compiles to SET "likeCount" = "likeCount" + 1 in SQL — an
+    // atomic update, not a read-modify-write in JavaScript. Two concurrent
+    // likes both land correctly.
+    const updated = await tx.post.update({
+      where: { id: postId },
+      data: { likeCount: { increment: 1 } },
+      select: { likeCount: true },
+    });
+    return updated.likeCount;
   });
 
   await notify({
@@ -28,16 +49,33 @@ async function like({ viewerId, postId }) {
     postId,
   });
 
-  return { liked: true, likeCount: await countLikes(postId) };
+  return { liked: true, likeCount };
 }
 
-// DELETE /posts/:postId/like
 async function unlike({ viewerId, postId }) {
   const post = await assertPostVisible(postId, viewerId);
 
-  await prisma.like.deleteMany({ where: { userId: viewerId, postId } });
+  const likeCount = await prisma.$transaction(async (tx) => {
+    const { count } = await tx.like.deleteMany({
+      where: { userId: viewerId, postId },
+    });
 
-  // Undoing the like undoes the notification too.
+    if (count === 0) {
+      const existing = await tx.post.findUnique({
+        where: { id: postId },
+        select: { likeCount: true },
+      });
+      return existing.likeCount;
+    }
+
+    const updated = await tx.post.update({
+      where: { id: postId },
+      data: { likeCount: { decrement: 1 } },
+      select: { likeCount: true },
+    });
+    return updated.likeCount;
+  });
+
   await withdraw({
     recipientId: post.authorId,
     actorId: viewerId,
@@ -45,8 +83,9 @@ async function unlike({ viewerId, postId }) {
     postId,
   });
 
-  return { liked: false, likeCount: await countLikes(postId) };
+  return { liked: false, likeCount };
 }
+
 
 // GET /posts/:postId/likes
 async function listLikers({ viewerId, postId, cursor, limit }) {

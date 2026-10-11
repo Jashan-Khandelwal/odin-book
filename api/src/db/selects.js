@@ -28,15 +28,26 @@ function pick(row, shape) {
 
 // Everything a post needs in a response. The _count block asks Postgres to
 // count related rows in the same query instead of a round trip per post.
+// const postSelect = {
+//   id: true,
+//   content: true,
+//   imageUrl: true,
+//   createdAt: true,
+//   updatedAt: true,
+//   author: { select: userPublicSelect },
+//   _count: { select: { likes: true, comments: true } },
+// };
 const postSelect = {
   id: true,
   content: true,
   imageUrl: true,
   createdAt: true,
   updatedAt: true,
+  likeCount: true,
+  commentCount: true,
   author: { select: userPublicSelect },
-  _count: { select: { likes: true, comments: true } },
 };
+
 
 // `post.authorId` is fetched so we can work out who may delete the comment,
 // then stripped before the response.
